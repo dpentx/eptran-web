@@ -1,0 +1,67 @@
+---
+import Layout from "@/components/Layout.astro";
+import { db, schema } from "@/lib/db";
+import { desc } from "drizzle-orm";
+
+const novels = await db.query.novels.findMany({
+  orderBy: desc(schema.novels.updatedAt),
+});
+---
+<Layout title="novels">
+  <header class="hero">
+    <h1>novels<span class="cursor">_</span></h1>
+    <p class="sub">eptran ile çevrilen kitaplar // ononoki-dp tarafından senkronize edilir</p>
+  </header>
+
+  <ul class="grid">
+    {novels.map((n) => (
+      <li class="card">
+        <a href={`/novel/${n.slug}`}>
+          <div class="cover" style={n.coverUrl ? `background-image:url(${n.coverUrl})` : ""}>
+            {!n.coverUrl && <span>{n.title.slice(0, 2)}</span>}
+          </div>
+          <div class="meta">
+            <h2>{n.title}</h2>
+            {n.author && <p class="author">{n.author}</p>}
+            <span class={`status status-${n.status}`}>{n.status === "completed" ? "tamamlandı" : "devam ediyor"}</span>
+          </div>
+        </a>
+      </li>
+    ))}
+  </ul>
+
+  {novels.length === 0 && <p class="empty">// henüz hiç novel senkronize edilmedi</p>}
+</Layout>
+
+<style>
+  .hero { padding: 3rem 0 2rem; }
+  .hero h1 { font-family: var(--font-mono); font-size: 2rem; margin: 0; }
+  .cursor { animation: blink 1.2s steps(1) infinite; opacity: 0.6; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .sub { color: var(--text-dim); font-family: var(--font-mono); font-size: 0.85rem; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 1.25rem;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .card a { display: block; color: inherit; text-decoration: none; }
+  .cover {
+    aspect-ratio: 2/3;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono); font-size: 1.5rem; color: var(--text-dim);
+    background-size: cover; background-position: center;
+  }
+  .meta { padding-top: 0.5rem; }
+  .meta h2 { font-size: 0.95rem; margin: 0 0 0.2rem; }
+  .author { font-size: 0.75rem; color: var(--text-dim); margin: 0 0 0.3rem; }
+  .status { font-family: var(--font-mono); font-size: 0.65rem; padding: 0.1rem 0.4rem; border: 1px solid var(--border); border-radius: 3px; }
+  .status-completed { color: var(--accent); border-color: var(--accent); }
+  .empty { font-family: var(--font-mono); color: var(--text-dim); }
+</style>

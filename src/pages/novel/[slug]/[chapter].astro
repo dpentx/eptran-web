@@ -1,0 +1,42 @@
+---
+import Layout from "@/components/Layout.astro";
+import Reader from "@/components/Reader";
+import { db, schema } from "@/lib/db";
+import { eq, and, asc } from "drizzle-orm";
+
+export const prerender = false;
+
+const { slug, chapter: chapterSlug } = Astro.params;
+
+const novel = await db.query.novels.findFirst({ where: eq(schema.novels.slug, slug!) });
+if (!novel) return Astro.redirect("/404");
+
+const chapter = await db.query.chapters.findFirst({
+  where: and(eq(schema.chapters.novelId, novel.id), eq(schema.chapters.slug, chapterSlug!)),
+});
+if (!chapter) return Astro.redirect(`/novel/${slug}`);
+
+const allChapters = await db.query.chapters.findMany({
+  where: eq(schema.chapters.novelId, novel.id),
+  orderBy: asc(schema.chapters.index),
+  columns: { slug: true, title: true, index: true },
+});
+
+const prev = allChapters.find((c) => c.index === chapter.index - 1) ?? null;
+const next = allChapters.find((c) => c.index === chapter.index + 1) ?? null;
+---
+<Layout title={`${chapter.title} — ${novel.title}`}>
+  <Reader
+    client:load
+    novelSlug={novel.slug}
+    chapterId={chapter.id}
+    chapterSlug={chapter.slug}
+    chapterIndex={chapter.index}
+    title={chapter.title}
+    novelTitle={novel.title}
+    contentHtml={chapter.content}
+    prev={prev}
+    next={next}
+    novelHref={`/novel/${novel.slug}`}
+  />
+</Layout>

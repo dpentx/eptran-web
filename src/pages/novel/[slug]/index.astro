@@ -1,0 +1,43 @@
+---
+import Layout from "@/components/Layout.astro";
+import ChapterListClient from "@/components/ChapterListClient";
+import { db, schema } from "@/lib/db";
+import { eq, asc } from "drizzle-orm";
+
+export const prerender = false;
+
+const { slug } = Astro.params;
+const novel = await db.query.novels.findFirst({ where: eq(schema.novels.slug, slug!) });
+
+if (!novel) {
+  return Astro.redirect("/404");
+}
+
+const chapters = await db.query.chapters.findMany({
+  where: eq(schema.chapters.novelId, novel.id),
+  orderBy: asc(schema.chapters.index),
+  columns: { id: true, slug: true, title: true, index: true, viewCount: true },
+});
+---
+<Layout title={novel.title}>
+  <a href="/" class="back">‹ novels</a>
+  <header class="novel-header">
+    <h1>{novel.title}</h1>
+    {novel.author && <p class="author">{novel.author}</p>}
+    {novel.description && <p class="desc">{novel.description}</p>}
+  </header>
+
+  <ChapterListClient
+    client:load
+    novelSlug={novel.slug}
+    chapters={chapters}
+  />
+</Layout>
+
+<style>
+  .back { font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-dim); text-decoration: none; }
+  .novel-header { padding: 1.5rem 0 2rem; border-bottom: 1px solid var(--border); }
+  .novel-header h1 { margin: 0 0 0.3rem; }
+  .author { color: var(--text-dim); font-size: 0.9rem; margin: 0 0 0.8rem; }
+  .desc { color: var(--text-dim); max-width: 60ch; }
+</style>
