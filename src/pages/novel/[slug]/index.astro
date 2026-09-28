@@ -22,9 +22,14 @@ const chapters = await db.query.chapters.findMany({
 <Layout title={novel.title}>
   <a href="/" class="back">‹ novels</a>
   <header class="novel-header">
-    <h1>{novel.title}</h1>
-    {novel.author && <p class="author">{novel.author}</p>}
-    {novel.description && <p class="desc">{novel.description}</p>}
+    {novel.coverUrl && (
+      <img class="cover" src={`/cover/${novel.slug}`} alt={novel.title} width="120" height="180" />
+    )}
+    <div class="info">
+      <h1>{novel.title}</h1>
+      {novel.author && <p class="author">{novel.author}</p>}
+      {novel.description && <p class="desc">{novel.description}</p>}
+    </div>
   </header>
 
   <ChapterListClient
@@ -36,7 +41,9 @@ const chapters = await db.query.chapters.findMany({
 
 <style>
   .back { font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-dim); text-decoration: none; }
-  .novel-header { padding: 1.5rem 0 2rem; border-bottom: 1px solid var(--border); }
+  .novel-header { display: flex; gap: 1.25rem; align-items: flex-start; padding: 1.5rem 0 2rem; border-bottom: 1px solid var(--border); }
+  .cover { width: 120px; aspect-ratio: 2/3; object-fit: cover; border: 1px solid var(--border); border-radius: 4px; flex-shrink: 0; }
+  .info { min-width: 0; }
   .novel-header h1 { margin: 0 0 0.3rem; }
   .author { color: var(--text-dim); font-size: 0.9rem; margin: 0 0 0.8rem; }
   .desc { color: var(--text-dim); max-width: 60ch; }
