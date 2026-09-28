@@ -17,7 +17,7 @@ const novels = await db.query.novels.findMany({
     {novels.map((n) => (
       <li class="card">
         <a href={`/novel/${n.slug}`}>
-          <div class="cover" style={n.coverUrl ? `background-image:url(${n.coverUrl})` : ""}>
+          <div class="cover" style={n.coverUrl ? `background-image:url(/cover/${n.slug})` : ""}>
             {!n.coverUrl && <span>{n.title.slice(0, 2)}</span>}
           </div>
           <div class="meta">

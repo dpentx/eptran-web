@@ -7,6 +7,11 @@ import crypto from "node:crypto";
 
 export const prerender = false;
 
+// Kapak resmi için üst sınır. Bot zaten ~400px'e küçültüp gönderiyor
+// (birkaç on KB); bu sınır sadece yanlışlıkla dev bir dosya gelirse DB'yi
+// şişirmesin diye.
+const MAX_COVER_BYTES = 1_500_000;
+
 /**
  * ononoki-dp botu, eptran'ın output/ klasörü değişince (GitHub Actions'tan)
  * buraya multipart/form-data POST atar:
@@ -18,6 +23,8 @@ export const prerender = false;
  *   format      : "epub" | "txt"
  *   file        : epub ise tek .epub dosyası
  *   files[]     : txt ise 001_.., 002_.. şeklinde sıralı .txt dosyaları
+ *   cover       : opsiyonel kapak resmi (image/*). Verilirse novels.cover_url'e
+ *                 data URI olarak yazılır, /cover/<slug> route'u sunar.
  *
  * Auth: Authorization: Bearer <INGEST_SECRET>
  */
@@ -39,6 +46,17 @@ export const POST: APIRoute = async ({ request }) => {
     return new Response(JSON.stringify({ error: "eksik veya hatalı alan" }), { status: 400 });
   }
 
+  // opsiyonel kapak resmi
+  let coverDataUri: string | null = null;
+  const coverFile = form.get("cover");
+  if (coverFile && typeof coverFile === "object" && coverFile.size > 0) {
+    const type = coverFile.type || "image/jpeg";
+    if (type.startsWith("image/") && coverFile.size <= MAX_COVER_BYTES) {
+      const buf = Buffer.from(await coverFile.arrayBuffer());
+      coverDataUri = `data:${type};base64,${buf.toString("base64")}`;
+    }
+  }
+
   // novel'ı bul ya da oluştur
   const existing = await db.query.novels.findFirst({
     where: eq(schema.novels.sourceKey, sourceKey),
@@ -55,6 +73,7 @@ export const POST: APIRoute = async ({ request }) => {
       title,
       author,
       description,
+      coverUrl: coverDataUri,
       sourceKey,
       status: "ongoing",
       createdAt: now,
@@ -63,7 +82,14 @@ export const POST: APIRoute = async ({ request }) => {
   } else {
     await db
       .update(schema.novels)
-      .set({ title, author, description, updatedAt: now })
+      .set({
+        title,
+        author,
+        description,
+        // kapak sadece yeni bir tane geldiyse güncellenir; gelmediyse eskisi kalır
+        ...(coverDataUri ? { coverUrl: coverDataUri } : {}),
+        updatedAt: now,
+      })
       .where(eq(schema.novels.id, existing.id));
   }
 
@@ -123,7 +149,12 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   return new Response(
-    JSON.stringify({ novelId, chaptersCreated: created, chaptersUpdated: updated }),
+    JSON.stringify({
+      novelId,
+      chaptersCreated: created,
+      chaptersUpdated: updated,
+      coverSaved: coverDataUri !== null,
+    }),
     { status: 200 }
   );
 };
