@@ -1,9 +1,7 @@
 import type { APIRoute } from "astro";
-import { nanoid } from "nanoid";
-import { eq, and } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { parseEpub, parseTxtChapter } from "@/lib/parseBook";
-import crypto from "node:crypto";
+import { upsertNovelAndChapters } from "@/lib/ingestCore";
 
 export const prerender = false;
 
@@ -57,42 +55,8 @@ export const POST: APIRoute = async ({ request }) => {
     }
   }
 
-  // novel'ı bul ya da oluştur
-  const existing = await db.query.novels.findFirst({
-    where: eq(schema.novels.sourceKey, sourceKey),
-  });
-
-  const now = new Date();
-  let novelId = existing?.id;
-
-  if (!existing) {
-    novelId = nanoid();
-    await db.insert(schema.novels).values({
-      id: novelId,
-      slug: slugify(title),
-      title,
-      author,
-      description,
-      coverUrl: coverDataUri,
-      sourceKey,
-      status: "ongoing",
-      createdAt: now,
-      updatedAt: now,
-    });
-  } else {
-    await db
-      .update(schema.novels)
-      .set({
-        title,
-        author,
-        description,
-        // kapak sadece yeni bir tane geldiyse güncellenir; gelmediyse eskisi kalır
-        ...(coverDataUri ? { coverUrl: coverDataUri } : {}),
-        updatedAt: now,
-      })
-      .where(eq(schema.novels.id, existing.id));
-  }
-
+  // Önce dosyaları ayrıştır, sonra yaz: eksik/bozuk dosya yüzünden yarım kalmış
+  // (bölümsüz) bir novel kaydı oluşmasın.
   let parsedChapters: { index: number; title: string; content: string }[] = [];
 
   if (format === "epub") {
@@ -110,67 +74,22 @@ export const POST: APIRoute = async ({ request }) => {
     );
   }
 
-  let created = 0;
-  let updated = 0;
-
-  for (const ch of parsedChapters) {
-    const contentHash = crypto.createHash("sha256").update(ch.content).digest("hex");
-    const chapterSlug = slugify(ch.title) || `bolum-${ch.index + 1}`;
-
-    const existingChapter = await db.query.chapters.findFirst({
-      where: and(eq(schema.chapters.novelId, novelId!), eq(schema.chapters.index, ch.index)),
-    });
-
-    if (!existingChapter) {
-      await db.insert(schema.chapters).values({
-        id: nanoid(),
-        novelId: novelId!,
-        index: ch.index,
-        slug: chapterSlug,
-        title: ch.title,
-        content: ch.content,
-        sourceFormat: format,
-        contentHash,
-        viewCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      });
-      created++;
-    } else if (existingChapter.contentHash !== contentHash) {
-      // eptran aynı bölümü tekrar çevirip düzeltmiş olabilir (ör. devam eden
-      // çeviri veya kabul edilen bir öneri sonrası) - içeriği güncelle,
-      // view_count'u koru.
-      await db
-        .update(schema.chapters)
-        .set({ title: ch.title, content: ch.content, contentHash, updatedAt: now })
-        .where(eq(schema.chapters.id, existingChapter.id));
-      updated++;
-    }
-  }
+  // novel'ı bul/oluştur + bölümleri yaz: /api/ingest-library ile ortak mantık.
+  const { novelId, chaptersCreated, chaptersUpdated } = await upsertNovelAndChapters(
+    db,
+    schema,
+    { sourceKey, title, author, description, coverDataUri },
+    format,
+    parsedChapters
+  );
 
   return new Response(
     JSON.stringify({
       novelId,
-      chaptersCreated: created,
-      chaptersUpdated: updated,
+      chaptersCreated,
+      chaptersUpdated,
       coverSaved: coverDataUri !== null,
     }),
     { status: 200 }
   );
 };
-
-function slugify(s: string) {
-  return s
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/ı/g, "i")
-    .replace(/ğ/g, "g")
-    .replace(/ü/g, "u")
-    .replace(/ş/g, "s")
-    .replace(/ö/g, "o")
-    .replace(/ç/g, "c")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "")
-    .slice(0, 80);
-}
