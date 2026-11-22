@@ -39,18 +39,53 @@ eptran repo (output/ değişir)
 Header: `Authorization: Bearer $INGEST_SECRET`
 
 Epub varsa her zaman epub tercih edilir (OPF spine sırasına göre otomatik
-bölünür); yalnızca epub yoksa `txt` fallback'i kullanılır.
+bölünür); yalnızca epub yoksa `txt` fallback'i kullanılır. (Bot şu an `txt`
+gönderiyor; bölüm sırası library'deki `NNN.txt` sırasıyla birebir aynıdır.)
+
+Testler: `npm test` (yerel libSQL dosyası + sahte library, ağ gerekmez).
+
+## `/api/ingest-library` sözleşmesi
+
+Metin [eptran-library](https://github.com/dpentx/eptran-library) reposuna
+taşındığı için bot dosyaları gövdeye koymak yerine sadece **hangi cildin**
+okunacağını söyler, site metni library'den kendisi çeker (public repo, token
+gerekmez):
+
+```json
+POST /api/ingest-library
+{ "series": "kusuriya", "slug": "knh-11", "sourceKey": "knh-11", "ref": "main" }
+```
+
+| alan | açıklama |
+|---|---|
+| `series`, `slug` | library'deki `<seri>/<cilt>` yolu (zorunlu) |
+| `sourceKey` | novel eşleştirme anahtarı; verilmezse `slug` |
+| `ref` | dal / etiket / commit (varsayılan `main`) |
+
+Header: `Authorization: Bearer $INGEST_SECRET` (`/api/ingest` ile aynı).
+
+- `<seri>/index.json`'dan başlık, yazar ve `bolum_sayisi` okunur; bölümler
+  `001.txt … NNN.txt` olarak çekilir. Library ana dalındaki **yayın biçimi**
+  (ilk satır başlık) `parseTxtChapter` ile olduğu gibi okunur; biçim tanımı
+  library README'sindedir.
+- Aynı yazma mantığı `/api/ingest` ile ortaktır (`src/lib/ingestCore.ts`): içerik
+  hash'i değişmeyen bölüme dokunulmaz, bot'un push'u ile library'den çekme aynı
+  metin için aynı hash'i üretir.
+- Novel zaten varsa başlık, yazar ve kapak **değiştirilmez**; yalnızca
+  bölümler eklenir/güncellenir. Library'de bir düzeltme birleşince aynı çağrı
+  yeniden ingest işi görür.
+- Ortam: `LIBRARY_REPO` (opsiyonel, varsayılan `dpentx/eptran-library`).
 
 ## Okuma ilerlemesi
 
 Sunucuda **tutulmaz**. Her cihaz kendi `localStorage`'ında
-(`src/lib/progress.ts`) novel bazlı son bölüm + scroll oranını saklar.
+(`src/lib/progress.ts`) novel bazında son bölüm + scroll oranını saklar.
 Bölüm listesinde "kaldığın yer" rozeti buradan gelir.
 
 ## Görülme sayacı
 
 Bölüme girişte `/api/chapters/[id]/view` çağrılır, DB'de basit bir sayaç
-artırılır (kullanıcı bazlı tekilleştirme yok).
+artırılır (kullanıcı bazında tekilleştirme yok).
 
 ## Typo / bağlam düzeltme önerileri
 
