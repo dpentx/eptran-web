@@ -79,13 +79,13 @@ Header: `Authorization: Bearer $INGEST_SECRET` (`/api/ingest` ile aynı).
 ## Okuma ilerlemesi
 
 Sunucuda **tutulmaz**. Her cihaz kendi `localStorage`'ında
-(`src/lib/progress.ts`) novel bazında son bölüm + scroll oranını saklar.
+(`src/lib/progress.ts`) novel bazlı son bölüm + scroll oranını saklar.
 Bölüm listesinde "kaldığın yer" rozeti buradan gelir.
 
 ## Görülme sayacı
 
 Bölüme girişte `/api/chapters/[id]/view` çağrılır, DB'de basit bir sayaç
-artırılır (kullanıcı bazında tekilleştirme yok).
+artırılır (kullanıcı bazlı tekilleştirme yok).
 
 ## Typo / bağlam düzeltme önerileri
 
