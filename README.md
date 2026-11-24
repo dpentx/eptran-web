@@ -90,9 +90,21 @@ artırılır (kullanıcı bazlı tekilleştirme yok).
 ## Typo / bağlam düzeltme önerileri
 
 Okuyucu metni seçip öneri gönderdiğinde `edit_suggestions` tablosuna
-`status: "pending"` olarak düşer. `ononoki-dp` botu bunları
-`GET /api/suggestions?status=pending` ile periyodik çeker, eptran reposunda
-ilgili `.txt`/epub kaynağını bulup PR açar, sonra durumu günceller.
+`status: "pending"` olarak düşer. `ononoki-dp` botu periyodik olarak bunları
+çeker, **eptran-library**'de ilgili `<seri>/<kitap>/NNN.txt` dosyasını bulup
+düzeltme PR'ı açar ve durumu günceller (eptran'daki `apply_suggestions.py`):
+
+| uç | açıklama |
+|---|---|
+| `GET /api/suggestions?status=pending` | Bot için **ince** liste (bölüm içeriği yok): `id, status, selectedText, contextBefore, contextAfter, suggestedText, note, prUrl, createdAt, chapterId, chapterIndex, chapterTitle, sourceKey, novelSlug`. Eskiden yeniye sıralı. `NNN = chapterIndex + 1`. |
+| `PATCH /api/suggestions` | `{ id, status, prUrl? }`. Geçişler: `pending → pr_open \| rejected`, `pr_open → merged \| rejected`. `pr_open` için github.com PR adresi gerekli; `merged`/`rejected` son durumdur. |
+
+Her ikisi de `Authorization: Bearer $INGEST_SECRET` ister. Mantık
+`src/lib/suggestionsCore.ts`'dedir (testli).
+
+PR birleşince bot `POST /api/ingest-library` ile bölümü yeniden okutur, düzeltme
+sitede görünür. Bot metni otomatik uygulayamadığı öneriyi (metin bulunamadı ya
+da birden fazla yerde geçiyor) `rejected` yapar.
 
 Şu an gönderimler anonim (`submitterId: null`). Google/GitHub login
 eklendiğinde bu alan doldurulacak ve PR'lar ononoki-dp adına ama

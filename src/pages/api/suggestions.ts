@@ -2,6 +2,12 @@ import type { APIRoute } from "astro";
 import { nanoid } from "nanoid";
 import { eq, and } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
+import {
+  SUGGESTION_STATUSES,
+  listSuggestionsForBot,
+  updateSuggestionStatus,
+  type SuggestionStatus,
+} from "@/lib/suggestionsCore";
 
 export const prerender = false;
 
@@ -48,8 +54,8 @@ function json(body: unknown, status: number) {
  * submitterId doldurulacak.
  *
  * Bu tablo ononoki-dp botunun ayrıca (cron/webhook ile) taradığı, "pending"
- * durumundaki kayıtları alıp eptran reposuna PR açtığı, sonra status'u
- * "pr_open" + prUrl olarak güncellediği yer.
+ * durumundaki kayıtları alıp eptran-library reposuna PR açtığı, sonra status'u
+ * "pr_open" + prUrl olarak güncellediği yer (GET/PATCH aşağıda).
  */
 export const POST: APIRoute = async ({ request }) => {
   const body = await request.json().catch(() => null);
@@ -109,21 +115,38 @@ export const POST: APIRoute = async ({ request }) => {
   return json({ ok: true, id }, 201);
 };
 
-/**
- * ononoki-dp botunun pending önerileri çekmesi için (Bearer INGEST_SECRET).
- */
-export const GET: APIRoute = async ({ request, url }) => {
+function botAuthorized(request: Request): boolean {
   const secret = import.meta.env.INGEST_SECRET;
   const auth = request.headers.get("authorization");
-  if (!secret || auth !== `Bearer ${secret}`) {
-    return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
-  }
+  return Boolean(secret) && auth === `Bearer ${secret}`;
+}
 
-  const status = url.searchParams.get("status") ?? "pending";
-  const pending = await db.query.editSuggestions.findMany({
-    where: eq(schema.editSuggestions.status, status as any),
-    with: { chapter: true },
-  });
+/**
+ * ononoki-dp botunun önerileri çekmesi için (Bearer INGEST_SECRET).
+ * Varsayılan status=pending. Yanıt BOT İÇİN İNCELTİLMİŞTİR (bölüm içeriği yok):
+ * her öneri chapterIndex + sourceKey taşır, böylece bot library'deki
+ * <seri>/<sourceKey>/NNN.txt dosyasını (NNN = chapterIndex + 1) bulabilir.
+ */
+export const GET: APIRoute = async ({ request, url }) => {
+  if (!botAuthorized(request)) return json({ error: "unauthorized" }, 401);
 
-  return new Response(JSON.stringify(pending), { status: 200 });
+  const status = (url.searchParams.get("status") ?? "pending") as SuggestionStatus;
+  if (!SUGGESTION_STATUSES.includes(status)) return json({ error: "geçersiz status" }, 400);
+
+  return json(await listSuggestionsForBot(db, schema, status), 200);
+};
+
+/**
+ * Bot bir öneri için PR açınca / PR sonuçlandığında durumu günceller (Bearer INGEST_SECRET).
+ *   { "id": "...", "status": "pr_open", "prUrl": "https://github.com/o/r/pull/1" }
+ * Geçişler: pending -> pr_open | rejected, pr_open -> merged | rejected.
+ */
+export const PATCH: APIRoute = async ({ request }) => {
+  if (!botAuthorized(request)) return json({ error: "unauthorized" }, 401);
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object") return json({ error: "geçersiz istek" }, 400);
+
+  const result = await updateSuggestionStatus(db, schema, body);
+  if (result.ok) return json({ ok: true, status: result.status }, 200);
+  return json({ error: result.message }, result.code === "not_found" ? 404 : 400);
 };
